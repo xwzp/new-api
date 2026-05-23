@@ -8,9 +8,16 @@ This document tracks the staged `main-plus` upgrade path from `v0.11.8` to
 Before starting each upgrade stage:
 
 1. Inspect the diff and expected conflicts for that exact `From -> To` range.
-2. Write a detailed conflict and risk summary for the user.
-3. Wait for explicit user confirmation.
-4. Only then apply the upgrade.
+2. Read the upstream GitHub release notes for the target range and summarize:
+   - Newly added or changed user-facing features.
+   - Bug fixes and behavior corrections.
+   - Operationally relevant migrations, defaults, or compatibility changes.
+3. Write a detailed conflict and risk summary for the user.
+4. Give every conflict a stable short ID, such as `C2-01`, where the first
+   number is the plan step and the second number is the conflict sequence.
+   Use those IDs in all follow-up discussion and resolution decisions.
+5. Wait for explicit user confirmation on the conflict handling plan.
+6. Only then apply the upgrade.
 
 After a stage is completed, update the matching row from `[ ]` to `[x]` and add
 the upgrade commit, verification result, or remaining issue in `Notes`.
