@@ -20,7 +20,7 @@ the upgrade commit, verification result, or remaining issue in `Notes`.
 | Done | Step | From | To | Status | Notes |
 |---|---:|---|---|---|---|
 | [x] | 0 | `v0.11.8` | `v0.11.8` | Baseline confirmed | `main-plus` merge-base is `v0.11.8`. |
-| [ ] | 1 | `v0.11.8` | `v0.11.9` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
+| [x] | 1 | `v0.11.8` | `v0.11.9` | Completed | Merged `v0.11.9`; removed obsolete fingerprint/Claude OAuth UI paths; `go test ./...` and `mise run fe-build` passed. |
 | [ ] | 2 | `v0.11.9` | `v0.12.5` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
 | [ ] | 3 | `v0.12.5` | `v0.12.10` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
 | [ ] | 4 | `v0.12.10` | `v0.12.15` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |

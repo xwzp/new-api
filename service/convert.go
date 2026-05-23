@@ -251,6 +251,25 @@ func generateStopBlock(index int) *dto.ClaudeResponse {
 	}
 }
 
+func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
+	if oaiUsage == nil {
+		return nil
+	}
+	usage := &dto.ClaudeUsage{
+		InputTokens:              oaiUsage.PromptTokens,
+		OutputTokens:             oaiUsage.CompletionTokens,
+		CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
+		CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
+	}
+	if oaiUsage.ClaudeCacheCreation5mTokens > 0 || oaiUsage.ClaudeCacheCreation1hTokens > 0 {
+		usage.CacheCreation = &dto.ClaudeCacheCreationUsage{
+			Ephemeral5mInputTokens: oaiUsage.ClaudeCacheCreation5mTokens,
+			Ephemeral1hInputTokens: oaiUsage.ClaudeCacheCreation1hTokens,
+		}
+	}
+	return usage
+}
+
 func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamResponse, info *relaycommon.RelayInfo) []*dto.ClaudeResponse {
 	if info.ClaudeConvertInfo.Done {
 		return nil
@@ -419,13 +438,8 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			}
 			if oaiUsage != nil {
 				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
-					Type: "message_delta",
-					Usage: &dto.ClaudeUsage{
-						InputTokens:              oaiUsage.PromptTokens,
-						OutputTokens:             oaiUsage.CompletionTokens,
-						CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
-						CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
-					},
+					Type:  "message_delta",
+					Usage: buildClaudeUsageFromOpenAIUsage(oaiUsage),
 					Delta: &dto.ClaudeMediaMessage{
 						StopReason: common.GetPointer[string](stopReasonOpenAI2Claude(info.FinishReason)),
 					},
@@ -447,13 +461,8 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			oaiUsage := info.ClaudeConvertInfo.Usage
 			if oaiUsage != nil {
 				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
-					Type: "message_delta",
-					Usage: &dto.ClaudeUsage{
-						InputTokens:              oaiUsage.PromptTokens,
-						OutputTokens:             oaiUsage.CompletionTokens,
-						CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
-						CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
-					},
+					Type:  "message_delta",
+					Usage: buildClaudeUsageFromOpenAIUsage(oaiUsage),
 					Delta: &dto.ClaudeMediaMessage{
 						StopReason: common.GetPointer[string](stopReasonOpenAI2Claude(info.FinishReason)),
 					},
@@ -583,13 +592,8 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			}
 			if oaiUsage != nil {
 				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
-					Type: "message_delta",
-					Usage: &dto.ClaudeUsage{
-						InputTokens:              oaiUsage.PromptTokens,
-						OutputTokens:             oaiUsage.CompletionTokens,
-						CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
-						CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
-					},
+					Type:  "message_delta",
+					Usage: buildClaudeUsageFromOpenAIUsage(oaiUsage),
 					Delta: &dto.ClaudeMediaMessage{
 						StopReason: common.GetPointer[string](stopReasonOpenAI2Claude(info.FinishReason)),
 					},
@@ -640,10 +644,7 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info *relayco
 	}
 	claudeResponse.Content = contents
 	claudeResponse.StopReason = stopReason
-	claudeResponse.Usage = &dto.ClaudeUsage{
-		InputTokens:  openAIResponse.PromptTokens,
-		OutputTokens: openAIResponse.CompletionTokens,
-	}
+	claudeResponse.Usage = buildClaudeUsageFromOpenAIUsage(&openAIResponse.Usage)
 
 	return claudeResponse
 }
