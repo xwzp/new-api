@@ -88,7 +88,7 @@ const renderStatus = (text, record, t) => {
 };
 
 // Render group column
-const renderGroupColumn = (text, record, t) => {
+const renderGroupColumn = (text, record, t, groupRatios = {}) => {
   if (text === 'auto') {
     return (
       <Tooltip
@@ -104,7 +104,17 @@ const renderGroupColumn = (text, record, t) => {
       </Tooltip>
     );
   }
-  return renderGroup(text);
+  const ratio = groupRatios[text];
+  return (
+    <span className='flex items-center gap-1'>
+      {renderGroup(text)}
+      {ratio !== undefined && (
+        <Tag size='small' color='green' shape='circle'>
+          {ratio}x
+        </Tag>
+      )}
+    </span>
+  );
 };
 
 // Render token key column with show/hide and copy functionality
@@ -116,6 +126,8 @@ const renderTokenKey = (
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  copyTokenConnectionString,
+  t,
 ) => {
   const revealed = !!showKeys[record.id];
   const loading = !!loadingTokenKeys[record.id];
@@ -145,18 +157,35 @@ const renderTokenKey = (
                 await toggleTokenVisibility(record);
               }}
             />
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={<IconCopy />}
-              loading={loading}
-              aria-label='copy token key'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await copyTokenKey(record);
-              }}
-            />
+            <Dropdown
+              trigger='click'
+              position='bottomRight'
+              clickToHide
+              menu={[
+                {
+                  node: 'item',
+                  name: t('复制密钥'),
+                  onClick: () => copyTokenKey(record),
+                },
+                {
+                  node: 'item',
+                  name: t('复制连接信息'),
+                  onClick: () => copyTokenConnectionString(record),
+                },
+              ]}
+            >
+              <Button
+                theme='borderless'
+                size='small'
+                type='tertiary'
+                icon={<IconCopy />}
+                loading={loading}
+                aria-label='copy token key'
+                onClick={async (e) => {
+                  e.stopPropagation();
+                }}
+              />
+            </Dropdown>
           </div>
         }
       />
@@ -324,7 +353,6 @@ const renderOperations = (
   text,
   record,
   onOpenLink,
-  onConfigureProvider,
   setEditingToken,
   setShowEdit,
   manageToken,
@@ -352,33 +380,6 @@ const renderOperations = (
   } catch (_) {
     showError(t('聊天链接配置错误，请联系管理员'));
   }
-
-  const configProviders = [
-    {
-      node: 'item',
-      key: 'openclaw-bash',
-      name: 'OpenClaw (Bash)',
-      onClick: () => onConfigureProvider(record, 'openclaw', 'bash'),
-    },
-    {
-      node: 'item',
-      key: 'openclaw-fish',
-      name: 'OpenClaw (fish)',
-      onClick: () => onConfigureProvider(record, 'openclaw', 'fish'),
-    },
-    {
-      node: 'item',
-      key: 'hermes-bash',
-      name: 'Hermes (Bash)',
-      onClick: () => onConfigureProvider(record, 'hermes', 'bash'),
-    },
-    {
-      node: 'item',
-      key: 'hermes-fish',
-      name: 'Hermes (fish)',
-      onClick: () => onConfigureProvider(record, 'hermes', 'fish'),
-    },
-  ];
 
   return (
     <Space wrap>
@@ -408,13 +409,6 @@ const renderOperations = (
           ></Button>
         </Dropdown>
       </SplitButtonGroup>
-
-      <Dropdown trigger='click' position='bottomRight' menu={configProviders}>
-        <Button size='small' type='tertiary'>
-          {t('一键配置')}
-          <IconTreeTriangleDown style={{ marginLeft: 2 }} />
-        </Button>
-      </Dropdown>
 
       {record.status === 1 ? (
         <Button
@@ -479,12 +473,13 @@ export const getTokensColumns = ({
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
-  onConfigureProvider,
+  copyTokenConnectionString,
   manageToken,
   onOpenLink,
   setEditingToken,
   setShowEdit,
   refresh,
+  groupRatios = {},
 }) => {
   return [
     {
@@ -506,7 +501,7 @@ export const getTokensColumns = ({
       title: t('分组'),
       dataIndex: 'group',
       key: 'group',
-      render: (text, record) => renderGroupColumn(text, record, t),
+      render: (text, record) => renderGroupColumn(text, record, t, groupRatios),
     },
     {
       title: t('密钥'),
@@ -520,6 +515,8 @@ export const getTokensColumns = ({
           loadingTokenKeys,
           toggleTokenVisibility,
           copyTokenKey,
+          copyTokenConnectionString,
+          t,
         ),
     },
     {
@@ -559,7 +556,6 @@ export const getTokensColumns = ({
           text,
           record,
           onOpenLink,
-          onConfigureProvider,
           setEditingToken,
           setShowEdit,
           manageToken,

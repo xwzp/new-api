@@ -31,7 +31,9 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import {
   fetchTokenKey as fetchTokenKeyById,
+  fetchTokenKeysBatch,
   getServerAddress,
+  encodeChannelConnectionString,
 } from '../../helpers/token';
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
@@ -40,6 +42,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   // Basic state
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [groupRatios, setGroupRatios] = useState({});
   const [activePage, setActivePage] = useState(1);
   const [tokenCount, setTokenCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
@@ -201,256 +204,11 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     await copyText(`sk-${fullKey}`);
   };
 
-  const shellSingleQuote = (value) => {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'";
-  };
-
-  const buildPythonConfigCommand = (pythonScript, payload) => {
-    const scriptBase64 = encodeToBase64(pythonScript);
-    const payloadBase64 = encodeToBase64(payload);
-    const runner = `import base64; exec(base64.b64decode("${scriptBase64}").decode("utf-8"))`;
-
-    return `env NEBULA_PROVIDER_JSON=${shellSingleQuote(payloadBase64)} python3 -c ${shellSingleQuote(runner)}`;
-  };
-
-  const buildAsciiSlug = (value, fallback) => {
-    const slug = String(value || '')
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/&/g, ' and ')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    return slug || fallback;
-  };
-
-  const buildOpenClawCommand = (record, fullKey, models) => {
-    const serverAddress = getServerAddress();
-    const providerKey =
-      'nebula-' + (record.name || 'default').replace(/\s+/g, '-');
-    const providerConfig = {};
-    providerConfig[providerKey] = {
-      baseUrl: serverAddress + '/v1',
-      apiKey: `sk-${fullKey}`,
-      models: models || [],
-    };
-    const providerJson = JSON.stringify(providerConfig, null, 2);
-
-    const pythonScript = `import base64, json, os
-
-provider = json.loads(base64.b64decode(os.environ["NEBULA_PROVIDER_JSON"]).decode("utf-8"))
-path = os.path.expanduser("~/.openclaw/openclaw.json")
-try:
-    with open(path) as f:
-        existing = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    existing = {}
-
-existing.setdefault("models", {}).setdefault("providers", {}).update(provider)
-
-pk = list(provider.keys())[0]
-models = provider[pk].get("models", [])
-dm = existing.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
-prefix = pk + "/"
-for k in list(dm.keys()):
-    if k.startswith(prefix):
-        del dm[k]
-for m in models:
-    dm[prefix + m["id"]] = {}
-
-os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path, "w") as f:
-    json.dump(existing, f, indent=2, ensure_ascii=False)
-
-print("Done! Nebula provider configured at " + path)`;
-
-    return buildPythonConfigCommand(pythonScript, providerJson);
-  };
-
-  const buildHermesCommand = (record, fullKey, models) => {
-    const serverAddress = getServerAddress();
-    const providerName =
-      'nebula-' +
-      buildAsciiSlug(
-        record.name || 'default',
-        `token-${record.id || 'default'}`,
-      );
-    const hermesModels = {};
-
-    for (const model of models || []) {
-      if (!model?.id) {
-        continue;
-      }
-      hermesModels[model.id] = {
-        context_length: Number(model.contextWindow) || 128000,
-        max_tokens: Number(model.maxTokens) || 4096,
-      };
-    }
-
-    const providerConfig = {
-      name: providerName,
-      base_url: serverAddress + '/v1',
-      api_key: `sk-${fullKey}`,
-      api_mode: 'codex_responses',
-      model: 'gpt-5.5',
-      models: hermesModels,
-    };
-    const providerJson = JSON.stringify(providerConfig, null, 2);
-
-    const pythonScript = `import base64, json, os, re
-from pathlib import Path
-
-provider = json.loads(base64.b64decode(os.environ["NEBULA_PROVIDER_JSON"]).decode("utf-8"))
-home = os.environ.get("HERMES_HOME", "").strip()
-path = (Path(home).expanduser() if home else Path.home() / ".hermes") / "config.yaml"
-
-def yaml_scalar(value):
-    text = str(value)
-    if re.match(r"^[A-Za-z0-9_./@:+-]+$", text) and not text.startswith(("-", "?", ":", "@", "\`")):
-        return text
-    return json.dumps(text, ensure_ascii=False)
-
-def yaml_key(value):
-    text = str(value)
-    if re.match(r"^[A-Za-z0-9_./@+-]+$", text):
-        return text
-    return json.dumps(text, ensure_ascii=False)
-
-def parse_name(raw):
-    text = raw.strip()
-    if text.startswith('"'):
-        try:
-            return json.loads(text)
-        except Exception:
-            pass
-    if text.startswith("'") and text.endswith("'"):
-        return text[1:-1].replace("''", "'")
-    return text
-
-def build_entry(entry, indent=""):
-    child = indent + "  "
-    model_indent = child + "  "
-    lines = [
-        indent + "- name: " + yaml_scalar(entry["name"]),
-        child + "base_url: " + yaml_scalar(entry["base_url"]),
-        child + "api_key: " + yaml_scalar(entry["api_key"]),
-        child + "api_mode: " + yaml_scalar(entry["api_mode"]),
-        child + "model: " + yaml_scalar(entry["model"]),
-    ]
-    models = entry.get("models") or {}
-    if models:
-        lines.append(child + "models:")
-        for model_name, model_cfg in models.items():
-            context_length = int(model_cfg.get("context_length") or 128000)
-            max_tokens = int(model_cfg.get("max_tokens") or 4096)
-            lines.append(model_indent + yaml_key(model_name) + ":")
-            lines.append(model_indent + "  context_length: " + str(context_length))
-            lines.append(model_indent + "  max_tokens: " + str(max_tokens))
-    else:
-        lines.append(child + "models: {}")
-    return lines
-
-def is_top_level_key(line):
-    return re.match(r"^[A-Za-z_][A-Za-z0-9_-]*\\s*:", line) is not None
-
-try:
-    text = path.read_text()
-except FileNotFoundError:
-    text = ""
-
-lines = text.splitlines()
-cp_index = None
-for i, line in enumerate(lines):
-    if re.match(r"^custom_providers\\s*:", line):
-        cp_index = i
-        break
-
-if cp_index is None:
-    new_text = text
-    if new_text and not new_text.endswith("\\n"):
-        new_text += "\\n"
-    if new_text:
-        new_text += "\\n"
-    new_text += "custom_providers:\\n" + "\\n".join(build_entry(provider)) + "\\n"
-else:
-    if re.match(r"^custom_providers\\s*:\\s*\\[\\s*\\]\\s*(#.*)?$", lines[cp_index]):
-        lines[cp_index] = "custom_providers:"
-
-    end = len(lines)
-    for i in range(cp_index + 1, len(lines)):
-        line = lines[i]
-        if line.strip() == "" or line.lstrip().startswith("#"):
-            continue
-        if is_top_level_key(line):
-            end = i
-            break
-
-    indent = ""
-    for line in lines[cp_index + 1:end]:
-        m = re.match(r"^(\\s*)-\\s+", line)
-        if m:
-            indent = m.group(1)
-            break
-
-    block = lines[cp_index + 1:end]
-    filtered = []
-    i = 0
-    while i < len(block):
-        line = block[i]
-        m = re.match(r"^" + re.escape(indent) + r"-\\s+name\\s*:\\s*(.*?)\\s*(?:#.*)?$", line)
-        if m and parse_name(m.group(1)) == provider["name"]:
-            i += 1
-            while i < len(block):
-                if re.match(r"^" + re.escape(indent) + r"-\\s+", block[i]):
-                    break
-                i += 1
-            continue
-        filtered.append(line)
-        i += 1
-
-    while filtered and filtered[-1].strip() == "":
-        filtered.pop()
-
-    entry_lines = build_entry(provider, indent)
-    new_lines = lines[:cp_index + 1] + filtered + entry_lines + lines[end:]
-    new_text = "\\n".join(new_lines) + "\\n"
-
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(new_text)
-print("Done! Nebula provider configured at " + str(path))`;
-
-    return buildPythonConfigCommand(pythonScript, providerJson);
-  };
-
-  // Generate provider config and copy a bash/zsh/fish-compatible command.
-  // shell is kept for the existing menu contract.
-  const onConfigureProvider = async (record, provider, shell = 'bash') => {
-    if (provider !== 'openclaw' && provider !== 'hermes') return;
-    try {
-      const [fullKey, res] = await Promise.all([
-        fetchTokenKey(record),
-        API.get(`/api/token/${record.id}/openclaw-models`),
-      ]);
-      const { success, message, data } = res.data;
-      if (!success) {
-        showError(message || t('获取模型列表失败'));
-        return;
-      }
-
-      const command =
-        provider === 'hermes'
-          ? buildHermesCommand(record, fullKey, data, shell)
-          : buildOpenClawCommand(record, fullKey, data, shell);
-
-      await copyText(command);
-      showSuccess(
-        provider === 'hermes'
-          ? t('Hermes 配置命令已复制到剪贴板')
-          : t('OpenClaw 配置命令已复制到剪贴板'),
-      );
-    } catch (error) {
-      showError(error?.message || t('生成配置失败'));
-    }
+  const copyTokenConnectionString = async (record) => {
+    const fullKey = await fetchTokenKey(record);
+    const serverUrl = getServerAddress();
+    const connStr = encodeChannelConnectionString(`sk-${fullKey}`, serverUrl);
+    await copyText(connStr);
   };
 
   // Open link function for chat integrations
@@ -464,7 +222,15 @@ print("Done! Nebula provider configured at " + str(path))`;
       openFluentNotification(fullKey);
       return;
     }
-    const serverAddress = getServerAddress();
+    let status = localStorage.getItem('status');
+    let serverAddress = '';
+    if (status) {
+      status = JSON.parse(status);
+      serverAddress = status.server_address;
+    }
+    if (serverAddress === '') {
+      serverAddress = window.location.origin;
+    }
     if (url.includes('{cherryConfig}') === true) {
       let cherryConfig = {
         id: 'new-api',
@@ -530,7 +296,8 @@ print("Done! Nebula provider configured at " + str(path))`;
   // Search tokens function
   const searchTokens = async (page = 1, size = pageSize) => {
     const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
-    const normalizedSize = Number.isInteger(size) && size > 0 ? size : pageSize;
+    const normalizedSize =
+      Number.isInteger(size) && size > 0 ? size : pageSize;
 
     const { searchKeyword, searchToken } = getFormValues();
     if (searchKeyword === '' && searchToken === '') {
@@ -643,16 +410,17 @@ print("Done! Nebula provider configured at " + str(path))`;
       return;
     }
     try {
-      const keys = await Promise.all(
-        selectedKeys.map((token) =>
-          fetchTokenKey(token, { suppressError: true }),
-        ),
-      );
+      const ids = selectedKeys.map((token) => token.id);
+      const keysMap = await fetchTokenKeysBatch(ids);
+
+      setResolvedTokenKeys((prev) => ({ ...prev, ...keysMap }));
+
       let content = '';
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const fullKey = keys[i];
+      for (const token of selectedKeys) {
+        const fullKey = keysMap[token.id];
+        if (!fullKey) continue;
         if (copyType === 'name+key') {
-          content += `${selectedKeys[i].name}    sk-${fullKey}\n`;
+          content += `${token.name}    sk-${fullKey}\n`;
         } else {
           content += `sk-${fullKey}\n`;
         }
@@ -670,6 +438,17 @@ print("Done! Nebula provider configured at " + str(path))`;
       .catch((reason) => {
         showError(reason);
       });
+    API.get('/api/user/self/groups')
+      .then((res) => {
+        if (res.data.success && res.data.data) {
+          const ratios = {};
+          for (const [name, info] of Object.entries(res.data.data)) {
+            ratios[name] = info.ratio;
+          }
+          setGroupRatios(ratios);
+        }
+      })
+      .catch(() => {});
   }, [pageSize]);
 
   return {
@@ -680,6 +459,7 @@ print("Done! Nebula provider configured at " + str(path))`;
     tokenCount,
     pageSize,
     searching,
+    groupRatios,
 
     // Selection state
     selectedKeys,
@@ -713,7 +493,7 @@ print("Done! Nebula provider configured at " + str(path))`;
     fetchTokenKey,
     toggleTokenVisibility,
     copyTokenKey,
-    onConfigureProvider,
+    copyTokenConnectionString,
     onOpenLink,
     manageToken,
     searchTokens,
