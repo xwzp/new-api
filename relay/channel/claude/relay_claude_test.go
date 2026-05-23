@@ -380,3 +380,42 @@ func TestRequestOpenAI2ClaudeMessage_ConvertsTextFileContentToText(t *testing.T)
 	require.NotNil(t, content[0].Text)
 	require.Equal(t, "alpha\nbeta", *content[0].Text)
 }
+
+func TestRequestOpenAI2ClaudeMessage_SkipsEmptyTextPartWithToolCalls(t *testing.T) {
+	message := dto.Message{
+		Role: "assistant",
+		Content: []any{
+			dto.MediaContent{
+				Type: dto.ContentTypeText,
+				Text: "  ",
+			},
+		},
+	}
+	message.SetToolCalls([]dto.ToolCallRequest{
+		{
+			ID:   "call_123",
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:      "lookup",
+				Arguments: `{"query":"nebula"}`,
+			},
+		},
+	})
+
+	request := dto.GeneralOpenAIRequest{
+		Model:    "claude-3-5-sonnet",
+		Messages: []dto.Message{message},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.Len(t, claudeRequest.Messages, 2)
+	require.Equal(t, "user", claudeRequest.Messages[0].Role)
+	require.Equal(t, "assistant", claudeRequest.Messages[1].Role)
+
+	content, ok := claudeRequest.Messages[1].Content.([]dto.ClaudeMediaMessage)
+	require.True(t, ok)
+	require.Len(t, content, 1)
+	require.Equal(t, "tool_use", content[0].Type)
+	require.Equal(t, "call_123", content[0].Id)
+}

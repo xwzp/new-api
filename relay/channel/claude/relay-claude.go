@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -345,10 +346,57 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				for _, mediaMessage := range message.ParseContent() {
 					switch mediaMessage.Type {
 					case "text":
+						if message.ToolCalls != nil && strings.TrimSpace(mediaMessage.Text) == "" {
+							continue
+						}
 						claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
 							Type: "text",
 							Text: common.GetPointer[string](mediaMessage.Text),
 						})
+					case dto.ContentTypeFile:
+						file := mediaMessage.GetFile()
+						if file == nil || file.FileData == "" {
+							continue
+						}
+						fileName := strings.ToLower(file.FileName)
+						if strings.HasSuffix(fileName, ".pdf") {
+							base64Data, mimeType, err := service.GetBase64Data(
+								c,
+								types.NewBase64FileSource(file.FileData, "application/pdf"),
+								"formatting pdf file for Claude",
+							)
+							if err != nil {
+								return nil, fmt.Errorf("get file data failed: %s", err.Error())
+							}
+							claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
+								Type: "document",
+								Source: &dto.ClaudeMessageSource{
+									Type:      "base64",
+									MediaType: mimeType,
+									Data:      base64Data,
+								},
+							})
+							continue
+						}
+						if isClaudeTextFile(fileName) {
+							base64Data, _, err := service.GetBase64Data(
+								c,
+								types.NewBase64FileSource(file.FileData, "text/plain"),
+								"formatting text file for Claude",
+							)
+							if err != nil {
+								return nil, fmt.Errorf("get file data failed: %s", err.Error())
+							}
+							data, err := base64.StdEncoding.DecodeString(base64Data)
+							if err != nil {
+								return nil, fmt.Errorf("decode text file failed: %s", err.Error())
+							}
+							claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
+								Type: "text",
+								Text: common.GetPointer[string](string(data)),
+							})
+							continue
+						}
 					default:
 						source := mediaMessage.ToFileSource()
 						if source == nil {
@@ -405,6 +453,15 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 	claudeRequest.Prompt = ""
 	claudeRequest.Messages = claudeMessages
 	return &claudeRequest, nil
+}
+
+func isClaudeTextFile(fileName string) bool {
+	for _, suffix := range []string{".txt", ".md", ".json", ".csv", ".xml", ".html", ".log", ".yaml", ".yml"} {
+		if strings.HasSuffix(fileName, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func StreamResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.ChatCompletionsStreamResponse {
