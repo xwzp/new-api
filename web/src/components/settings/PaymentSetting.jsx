@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { Card, Spin } from '@douyinfe/semi-ui';
+import { Card, Spin, Tabs } from '@douyinfe/semi-ui';
 import SettingsGeneralPayment from '../../pages/Setting/Payment/SettingsGeneralPayment';
 import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentGateway';
 import SettingsPaymentGatewayEpay from '../../pages/Setting/Payment/SettingsPaymentGatewayEpay';
@@ -27,6 +27,7 @@ import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPay
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWechat from '../../pages/Setting/Payment/SettingsPaymentGatewayWechat';
 import SettingsPaymentGatewayAlipay from '../../pages/Setting/Payment/SettingsPaymentGatewayAlipay';
+import SettingsPaymentGatewayWaffoPancake from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffoPancake';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -42,6 +43,11 @@ const PaymentSetting = () => {
     TopupGroupRatio: '',
     CustomCallbackAddress: '',
     PayMethods: '',
+    AmountOptions: '',
+    AmountDiscount: '',
+
+    EpayUnitPrice: 0,
+    EpayMinTopUp: 0,
 
     StripeApiSecret: '',
     StripeWebhookSecret: '',
@@ -49,6 +55,19 @@ const PaymentSetting = () => {
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
+
+    WaffoPancakeEnabled: false,
+    WaffoPancakeSandbox: false,
+    WaffoPancakeMerchantID: '',
+    WaffoPancakePrivateKey: '',
+    WaffoPancakeWebhookPublicKey: '',
+    WaffoPancakeWebhookTestKey: '',
+    WaffoPancakeStoreID: '',
+    WaffoPancakeProductID: '',
+    WaffoPancakeReturnURL: '',
+    WaffoPancakeCurrency: 'USD',
+    WaffoPancakeUnitPrice: 1.0,
+    WaffoPancakeMinTopUp: 1,
   });
 
   let [loading, setLoading] = useState(false);
@@ -71,6 +90,28 @@ const PaymentSetting = () => {
               newInputs[item.key] = item.value;
             }
             break;
+          case 'payment_setting.amount_options':
+            try {
+              newInputs['AmountOptions'] = JSON.stringify(
+                JSON.parse(item.value),
+                null,
+                2,
+              );
+            } catch (error) {
+              newInputs['AmountOptions'] = item.value;
+            }
+            break;
+          case 'payment_setting.amount_discount':
+            try {
+              newInputs['AmountDiscount'] = JSON.stringify(
+                JSON.parse(item.value),
+                null,
+                2,
+              );
+            } catch (error) {
+              newInputs['AmountDiscount'] = item.value;
+            }
+            break;
           case 'Price':
           case 'MinTopUp':
           case 'EpayUnitPrice':
@@ -81,7 +122,22 @@ const PaymentSetting = () => {
           case 'WechatPayMinTopUp':
           case 'AlipayUnitPrice':
           case 'AlipayMinTopUp':
+          case 'WaffoPancakeUnitPrice':
+          case 'WaffoPancakeMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
+            break;
+          case 'WaffoPancakeMerchantID':
+          case 'WaffoPancakePrivateKey':
+          case 'WaffoPancakeWebhookPublicKey':
+          case 'WaffoPancakeWebhookTestKey':
+          case 'WaffoPancakeStoreID':
+          case 'WaffoPancakeProductID':
+          case 'WaffoPancakeReturnURL':
+          case 'WaffoPancakeCurrency':
+            newInputs[item.key] = item.value;
+            break;
+          case 'WaffoPancakeSandbox':
+            newInputs[item.key] = toBoolean(item.value);
             break;
           default:
             if (item.key.endsWith('Enabled')) {
@@ -93,7 +149,7 @@ const PaymentSetting = () => {
         }
       });
 
-      setInputs(newInputs);
+      setInputs((prev) => ({ ...prev, ...newInputs }));
     } else {
       showError(t(message));
     }
@@ -118,28 +174,75 @@ const PaymentSetting = () => {
     <>
       <Spin spinning={loading} size='large'>
         <Card style={{ marginTop: '10px' }}>
-          <SettingsGeneralPayment options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGateway options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayEpay options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayStripe options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayCreem options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayWaffo options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayWechat options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsPaymentGatewayAlipay options={inputs} refresh={onRefresh} />
+          <Tabs
+            type='card'
+            defaultActiveKey='general'
+            contentStyle={{ paddingTop: 24 }}
+          >
+            <Tabs.TabPane tab={t('通用设置')} itemKey='general'>
+              <SettingsGeneralPayment
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('充值定价')} itemKey='pricing'>
+              <SettingsPaymentGateway
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('易支付设置')} itemKey='epay'>
+              <SettingsPaymentGatewayEpay
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('Stripe 设置')} itemKey='stripe'>
+              <SettingsPaymentGatewayStripe
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('Creem 设置')} itemKey='creem'>
+              <SettingsPaymentGatewayCreem
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('Waffo 设置')} itemKey='waffo'>
+              <SettingsPaymentGatewayWaffo
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('Waffo Pancake 设置')} itemKey='waffo-pancake'>
+              <SettingsPaymentGatewayWaffoPancake
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('微信支付设置')} itemKey='wechat'>
+              <SettingsPaymentGatewayWechat
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('支付宝设置')} itemKey='alipay'>
+              <SettingsPaymentGatewayAlipay
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+          </Tabs>
         </Card>
       </Spin>
     </>

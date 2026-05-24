@@ -17,26 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
-import { Button, Form, Row, Col, Spin } from '@douyinfe/semi-ui';
-import {
-  API,
-  showError,
-  showSuccess,
-  verifyJSON,
-} from '../../../helpers';
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
 export default function SettingsPaymentGateway(props) {
   const { t } = useTranslation();
+  const sectionTitle = props.hideSectionTitle ? undefined : t('充值定价');
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     Price: 7.3,
     MinTopUp: 1,
-    TopupGroupRatio: '',
-    CustomCallbackAddress: '',
   });
-  const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
 
   useEffect(() => {
@@ -50,12 +43,9 @@ export default function SettingsPaymentGateway(props) {
           props.options.MinTopUp !== undefined
             ? parseFloat(props.options.MinTopUp)
             : 1,
-        TopupGroupRatio: props.options.TopupGroupRatio || '',
-        CustomCallbackAddress: props.options.CustomCallbackAddress || '',
       };
 
       setInputs(currentInputs);
-      setOriginInputs({ ...currentInputs });
       formApiRef.current.setValues(currentInputs);
     }
   }, [props.options]);
@@ -65,13 +55,6 @@ export default function SettingsPaymentGateway(props) {
   };
 
   const submitSettings = async () => {
-    if (originInputs['TopupGroupRatio'] !== inputs.TopupGroupRatio) {
-      if (!verifyJSON(inputs.TopupGroupRatio)) {
-        showError(t('充值分组倍率不是合法的 JSON 字符串'));
-        return;
-      }
-    }
-
     setLoading(true);
     try {
       const options = [];
@@ -82,23 +65,15 @@ export default function SettingsPaymentGateway(props) {
       if (inputs.MinTopUp !== '') {
         options.push({ key: 'MinTopUp', value: inputs.MinTopUp.toString() });
       }
-      if (inputs.CustomCallbackAddress !== '') {
-        options.push({
-          key: 'CustomCallbackAddress',
-          value: inputs.CustomCallbackAddress,
-        });
-      }
-      if (originInputs['TopupGroupRatio'] !== inputs.TopupGroupRatio) {
-        options.push({ key: 'TopupGroupRatio', value: inputs.TopupGroupRatio });
-      }
-      const requestQueue = options.map((opt) =>
-        API.put('/api/option/', {
-          key: opt.key,
-          value: opt.value,
-        }),
-      );
 
-      const results = await Promise.all(requestQueue);
+      const results = await Promise.all(
+        options.map((opt) =>
+          API.put('/api/option/', {
+            key: opt.key,
+            value: opt.value,
+          }),
+        ),
+      );
 
       const errorResults = results.filter((res) => !res.data.success);
       if (errorResults.length > 0) {
@@ -107,7 +82,6 @@ export default function SettingsPaymentGateway(props) {
         });
       } else {
         showSuccess(t('更新成功'));
-        setOriginInputs({ ...inputs });
         props.refresh && props.refresh();
       }
     } catch (error) {
@@ -123,9 +97,9 @@ export default function SettingsPaymentGateway(props) {
         onValueChange={handleFormChange}
         getFormApi={(api) => (formApiRef.current = api)}
       >
-        <Form.Section text={t('支付设置')}>
+        <Form.Section text={sectionTitle}>
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+            <Col xs={24} sm={24} md={12} lg={12} xl={12}>
               <Form.InputNumber
                 field='Price'
                 precision={2}
@@ -133,28 +107,17 @@ export default function SettingsPaymentGateway(props) {
                 placeholder={t('例如：7，就是7元/美金')}
               />
             </Col>
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+            <Col xs={24} sm={24} md={12} lg={12} xl={12}>
               <Form.InputNumber
                 field='MinTopUp'
                 label={t('最低充值美元数量')}
                 placeholder={t('例如：2，就是最低充值2$')}
               />
             </Col>
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.Input
-                field='CustomCallbackAddress'
-                label={t('自定义回调地址')}
-                placeholder={t('例如：https://yourdomain.com')}
-              />
-            </Col>
           </Row>
-          <Form.TextArea
-            field='TopupGroupRatio'
-            label={t('充值分组倍率')}
-            placeholder={t('为一个 JSON 文本，键为组名称，值为倍率')}
-            autosize
-          />
-          <Button onClick={submitSettings}>{t('更新支付设置')}</Button>
+          <Button onClick={submitSettings} style={{ marginTop: 16 }}>
+            {t('更新充值定价')}
+          </Button>
         </Form.Section>
       </Form>
     </Spin>

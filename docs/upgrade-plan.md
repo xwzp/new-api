@@ -30,7 +30,7 @@ the upgrade commit, verification result, or remaining issue in `Notes`.
 | [x] | 1 | `v0.11.8` | `v0.11.9` | Completed | Merged `v0.11.9`; removed obsolete fingerprint/Claude OAuth UI paths; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 2 | `v0.11.9` | `v0.12.5` | Completed | Merged `v0.12.5`; removed obsolete OpenClaw/Hermes token config route and UI; conflict handling followed `C2-01` through `C2-05`; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 3 | `v0.12.5` | `v0.12.10` | Completed | Merged `v0.12.10`; conflicts handled per `C3-01` through `C3-05`; kept payment-provider isolation while adding Stripe async webhook handling; `go test ./...` and `mise run fe-build` passed. |
-| [ ] | 4 | `v0.12.10` | `v0.12.15` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
+| [x] | 4 | `v0.12.10` | `v0.12.15` | Completed | Merged `v0.12.15`; conflicts handled per `C4-01` through `C4-08`; kept payment-provider isolation, direct WeChat/Alipay, and Claude empty-text handling while adding Waffo Pancake/payment log/Codex/Gemini/passkey updates; `go test ./...` and `mise run fe-build` passed. |
 | [ ] | 5 | `v0.12.15` | `v0.13.2` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
 | [ ] | 6 | `v0.13.2` | `v1.0.0-rc.8` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
 
