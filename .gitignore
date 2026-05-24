@@ -38,5 +38,6 @@ data/
 .worktrees/
 web/test-results/
 web/playwright-report/
-
+.test
 token_estimator_test.go
+skills-lock.json

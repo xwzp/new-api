@@ -194,11 +194,6 @@ export const CHANNEL_OPTIONS = [
     color: 'indigo',
     label: 'Anthropic Claude (OAuth Token)',
   },
-  {
-    value: 59,
-    color: 'orange',
-    label: 'Brave Search',
-  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

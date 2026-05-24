@@ -115,3 +115,7 @@ After completing any new feature, enhancement, or significant change, update `do
 - Updated environment variables
 
 `docs/project-guide.md` is the single source of truth for project documentation. Keep it current.
+
+### Rule 8: Billing Expression System — Read `pkg/billingexpr/expr.md`
+
+When working on tiered/dynamic billing (expression-based pricing), you MUST read `pkg/billingexpr/expr.md` first. It documents the design philosophy, expression language (variables, functions, examples), full system architecture (editor → storage → pre-consume → settlement → log display), token normalization rules (`p`/`c` auto-exclusion), quota conversion, and expression versioning. All code changes to the billing expression system must follow the patterns described in that document.

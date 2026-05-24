@@ -208,6 +208,16 @@ const TopupHistoryModal = ({ visible, onCancel, t, onShowWechatQr, onShowAlipayQ
 
   const columns = useMemo(() => {
     const baseColumns = [
+      ...(userIsAdmin
+        ? [
+            {
+              title: t('用户ID'),
+              dataIndex: 'user_id',
+              key: 'user_id',
+              render: (userId) => <Text>{userId ?? '-'}</Text>,
+            },
+          ]
+        : []),
       {
         title: t('订单号'),
         dataIndex: 'trade_no',

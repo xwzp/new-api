@@ -56,7 +56,6 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeClaudeOAuth    = 58
-	ChannelTypeBraveSearch    = 59
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -121,7 +120,6 @@ var ChannelBaseURLs = []string{
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
 	"https://api.anthropic.com",                 //58
-	"https://api.search.brave.com",              //59
 }
 
 var ChannelTypeNames = map[int]string{
@@ -180,7 +178,6 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeClaudeOAuth:    "ClaudeOAuth",
-	ChannelTypeBraveSearch:    "BraveSearch",
 }
 
 func GetChannelTypeName(channelType int) string {

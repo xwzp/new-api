@@ -72,6 +72,30 @@ file had the correct password-bearing Redis URL, but `docker-compose.prod.yml`
 overrode it with the old `redis://redis` value while Redis required
 `--requirepass 123456`.
 
+### Stage 5 Production Notes
+
+For the `v0.12.15 -> v0.13.2` deployment handoff, check these items before the
+user deploys:
+
+- Database compatibility is expected to be additive: this stage introduces
+  fields such as `payment_provider` on payment records and user audit fields
+  such as creation and last-login timestamps. Existing rows should remain
+  readable, and old payment rows without `payment_provider` are intentionally
+  guarded by legacy order-prefix compatibility logic.
+- Token key length is relaxed for old-token migration compatibility. This
+  should not invalidate existing tokens, but token login and token list pages
+  must be checked after deployment.
+- `gpt-5.5` support is mainly billing-ratio recognition, not automatic channel
+  replacement. Production channels that already manually include `gpt-5.5`
+  should remain, but model ratio, completion ratio, and model pricing should be
+  reviewed after deployment.
+- Brave Search channel, `/v1/search`, and Firecrawl-compatible `/v2/search`
+  paths were removed from `main-plus` because they are no longer used.
+- If deployment fails before the app becomes healthy, roll back the image/code
+  version first. The additive database columns can normally remain in place for
+  the old version, but do not manually drop production columns during incident
+  recovery.
+
 ## Plan
 
 | Done | Step | From | To | Status | Notes |
@@ -81,7 +105,7 @@ overrode it with the old `redis://redis` value while Redis required
 | [x] | 2 | `v0.11.9` | `v0.12.5` | Completed | Merged `v0.12.5`; removed obsolete OpenClaw/Hermes token config route and UI; conflict handling followed `C2-01` through `C2-05`; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 3 | `v0.12.5` | `v0.12.10` | Completed | Merged `v0.12.10`; conflicts handled per `C3-01` through `C3-05`; kept payment-provider isolation while adding Stripe async webhook handling; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 4 | `v0.12.10` | `v0.12.15` | Completed | Merged `v0.12.15`; conflicts handled per `C4-01` through `C4-08`; kept payment-provider isolation, direct WeChat/Alipay, and Claude empty-text handling while adding Waffo Pancake/payment log/Codex/Gemini/passkey updates; `go test ./...` and `mise run fe-build` passed. |
-| [ ] | 5 | `v0.12.15` | `v0.13.2` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
+| [x] | 5 | `v0.12.15` | `v0.13.2` | Completed | Merged `v0.13.2`; conflicts handled per `C5-01` through `C5-07`; kept payment-provider isolation and direct WeChat/Alipay compatibility, removed Brave Search routes/channel, added tiered billing/model sync updates; `go test ./...` and `mise run fe-build` passed. |
 | [ ] | 6 | `v0.13.2` | `v1.0.0-rc.8` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
 
 ## Verification Checklist

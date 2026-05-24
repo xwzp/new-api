@@ -20,9 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay"
-	"github.com/QuantumNous/new-api/relay/channel/brave_search"
-	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -235,6 +234,15 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	info.IsChannelTest = true
 	info.InitChannelMeta(c)
 
+	err = attachTestBillingRequestInput(info, request)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+		}
+	}
+
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return testResult{
@@ -265,11 +273,6 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			localErr:    fmt.Errorf("invalid api type: %d, adaptor is nil", apiType),
 			newAPIError: types.NewError(fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), types.ErrorCodeInvalidApiType),
 		}
-	}
-
-	// Brave Search: bypass LLM conversion, send a real search request directly
-	if apiType == constant.APITypeBraveSearch {
-		return testBraveSearchChannel(c, channel, info, adaptor, tik)
 	}
 
 	//// 创建一个用于日志的 info 副本，移除 ApiKey
@@ -476,21 +479,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 	info.SetEstimatePromptTokens(usage.PromptTokens)
 
-	quota := 0
-	if !priceData.UsePrice {
-		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
-		quota = int(math.Round(float64(quota) * priceData.ModelRatio))
-		if priceData.ModelRatio != 0 && quota <= 0 {
-			quota = 1
-		}
-	} else {
-		quota = int(priceData.ModelPrice * common.QuotaPerUnit)
-	}
+	quota, tieredResult := settleTestQuota(info, priceData, usage)
 	tok := time.Now()
 	milliseconds := tok.Sub(tik).Milliseconds()
 	consumedTime := float64(milliseconds) / 1000.0
-	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
-		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
+	other := buildTestLogOther(c, info, priceData, usage, tieredResult)
 	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
@@ -512,55 +505,48 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 }
 
-func testBraveSearchChannel(c *gin.Context, channel *model.Channel, info *relaycommon.RelayInfo, adaptor relaychannel.Adaptor, tik time.Time) testResult {
-	braveAdaptor, ok := adaptor.(*brave_search.Adaptor)
-	if !ok {
-		return testResult{
-			context:  c,
-			localErr: errors.New("brave search: failed to cast adaptor"),
-		}
+func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Request) error {
+	if info == nil {
+		return nil
 	}
 
-	braveAdaptor.Init(info)
-
-	// Build a minimal search request body
-	testQuery := `{"model":"brave-search","q":"test"}`
-	c.Request.Body = io.NopCloser(bytes.NewBufferString(testQuery))
-	if err := braveAdaptor.ParseSearchRequest(c); err != nil {
-		return testResult{
-			context:  c,
-			localErr: fmt.Errorf("brave search: parse request failed: %w", err),
-		}
-	}
-
-	resp, err := braveAdaptor.DoSearchRequest(c, info)
+	input, err := helper.BuildBillingExprRequestInputFromRequest(request, info.RequestHeaders)
 	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		return err
+	}
+	info.BillingRequestInput = &input
+	return nil
+}
+
+func settleTestQuota(info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage) (int, *billingexpr.TieredResult) {
+	if usage != nil && info != nil && info.TieredBillingSnapshot != nil {
+		isClaudeUsageSemantic := usage.UsageSemantic == "anthropic" || info.GetFinalRequestRelayFormat() == types.RelayFormatClaude
+		usedVars := billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString)
+		if ok, quota, result := service.TryTieredSettle(info, service.BuildTieredTokenParams(usage, isClaudeUsageSemantic, usedVars)); ok {
+			return quota, result
 		}
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return testResult{
-			context:     c,
-			localErr:    fmt.Errorf("brave search: upstream returned status %d: %s", resp.StatusCode, string(body)),
-			newAPIError: types.NewOpenAIError(fmt.Errorf("status %d", resp.StatusCode), types.ErrorCodeBadResponse, http.StatusInternalServerError),
+	quota := 0
+	if !priceData.UsePrice {
+		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
+		quota = int(math.Round(float64(quota) * priceData.ModelRatio))
+		if priceData.ModelRatio != 0 && quota <= 0 {
+			quota = 1
 		}
+		return quota, nil
 	}
 
-	tok := time.Now()
-	milliseconds := tok.Sub(tik).Milliseconds()
-	common.SysLog(fmt.Sprintf("testing brave search channel #%d, response time: %dms", channel.Id, milliseconds))
+	return int(priceData.ModelPrice * common.QuotaPerUnit), nil
+}
 
-	return testResult{
-		context:     c,
-		localErr:    nil,
-		newAPIError: nil,
+func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
+	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
+		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
+	if tieredResult != nil {
+		service.InjectTieredBillingInfo(other, info, tieredResult)
 	}
+	return other
 }
 
 func coerceTestUsage(usageAny any, isStream bool, estimatePromptTokens int) (*dto.Usage, error) {
