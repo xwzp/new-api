@@ -22,6 +22,56 @@ Before starting each upgrade stage:
 After a stage is completed, update the matching row from `[ ]` to `[x]` and add
 the upgrade commit, verification result, or remaining issue in `Notes`.
 
+## Production Preflight Gate
+
+The user owns the actual production deployment. Before asking the user to deploy
+an upgraded build, perform extra read-only production checks and report the
+result clearly. Do not restart, recreate, or deploy production services unless
+the user explicitly asks for that operation.
+
+Required checks before the final "ready to deploy" handoff:
+
+1. Inspect the production Compose merge result, not only individual Compose
+   files:
+   ```bash
+   sudo docker compose \
+     --env-file /root/new-api/.env.prod \
+     -f /root/new-api/docker-compose.yml \
+     -f /root/new-api/docker-compose.prod.yml \
+     config
+   ```
+2. Check whether production override files change important runtime settings
+   from the base Compose file, especially:
+   - `REDIS_CONN_STRING`
+   - `SQL_DSN`
+   - published ports
+   - volume mounts
+   - image names and tags
+   - service commands
+3. Compare live Redis requirements with the API container's effective Redis
+   connection string:
+   ```bash
+   sudo docker inspect redis --format '{{json .Args}}'
+   sudo docker inspect nebula-api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep REDIS
+   ```
+   If Redis uses `--requirepass`, `REDIS_CONN_STRING` must include the password.
+4. Check live container state and recent fatal logs:
+   ```bash
+   sudo docker ps
+   sudo docker logs --tail 100 nebula-api
+   ```
+5. Probe public health endpoints without mutating production state:
+   ```bash
+   curl -fsS https://ai.nebulatrip.com/api/status
+   curl -fsS https://image-api.nebulatrip.com/api/status
+   ```
+
+If any check shows a mismatch, stop before the deployment handoff and explain the
+risk. The May 24, 2026 outage was caused by this class of issue: the base Compose
+file had the correct password-bearing Redis URL, but `docker-compose.prod.yml`
+overrode it with the old `redis://redis` value while Redis required
+`--requirepass 123456`.
+
 ## Plan
 
 | Done | Step | From | To | Status | Notes |
@@ -42,4 +92,5 @@ Run the relevant checks after each completed stage:
 - Run backend tests or at least a backend build.
 - Run the frontend production build.
 - Verify relay, billing, subscription/topup, and OpenClaw/Hermes config paths did not regress.
+- Run the production preflight gate before telling the user the upgrade is ready for production deployment.
 - Record the completed upgrade commit and verification result in the plan table.
