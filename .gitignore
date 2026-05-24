@@ -38,3 +38,5 @@ data/
 .worktrees/
 web/test-results/
 web/playwright-report/
+
+token_estimator_test.go
