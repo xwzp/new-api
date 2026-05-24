@@ -28,7 +28,7 @@ services:
     environment:
       - GIN_MODE=release
       - SQL_DSN=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_CONN_STRING=redis://redis
+      - REDIS_CONN_STRING=redis://:123456@redis:6379
       - SESSION_SECRET=${SESSION_SECRET}
       - TZ=Asia/Shanghai
       - ERROR_LOG_ENABLED=true
