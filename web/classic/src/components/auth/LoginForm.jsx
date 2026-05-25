@@ -130,6 +130,8 @@ const LoginForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const canRegister =
+    !status.self_use_mode_enabled && status.register_enabled !== false;
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
@@ -705,7 +707,7 @@ const LoginForm = () => {
                 </div>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {canRegister && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -858,7 +860,7 @@ const LoginForm = () => {
                 </>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {canRegister && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
