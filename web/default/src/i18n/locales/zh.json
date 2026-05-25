@@ -1157,6 +1157,7 @@
     "Delete selected channels": "删除所选渠道",
     "Delete selected models": "删除选定的模型",
     "Deleted": "已注销",
+    "Hide deleted users": "隐藏已注销用户",
     "Deleted successfully": "删除成功",
     "Deleting will permanently remove this subscription record (including benefit details). Continue?": "删除会彻底移除该订阅记录（含权益明细）。是否继续？",
     "Deleting...": "删除中...",

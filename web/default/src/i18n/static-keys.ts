@@ -95,6 +95,7 @@ export const STATIC_I18N_KEYS = [
   // Users
   'Root',
   'Deleted',
+  'Hide deleted users',
   'User created successfully',
   'User updated successfully',
   'User updated successfully',

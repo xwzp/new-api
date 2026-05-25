@@ -153,7 +153,10 @@ export function useUsersColumns(): ColumnDef<User>[] {
         )
       },
       filterFn: (row, id, value) => {
-        return value.includes(String(row.getValue(id)))
+        const filterValue = isUserDeleted(row.original)
+          ? String(USER_STATUSES.DELETED.value)
+          : String(row.getValue(id))
+        return value.includes(filterValue)
       },
       enableSorting: false,
       meta: { label: t('Status'), mobileBadge: true },

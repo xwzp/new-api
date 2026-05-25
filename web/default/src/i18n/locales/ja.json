@@ -1150,6 +1150,7 @@
     "Delete selected channels": "選択したチャネルを削除",
     "Delete selected models": "選択したモデルを削除",
     "Deleted": "削除済み",
+    "Hide deleted users": "削除済みユーザーを非表示",
     "Deleted successfully": "削除しました",
     "Deleting will permanently remove this subscription record (including benefit details). Continue?": "削除するとこのサブスクリプション記録（特典詳細を含む）が完全に削除されます。続行しますか？",
     "Deleting...": "削除中...",

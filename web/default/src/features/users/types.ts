@@ -76,6 +76,7 @@ export interface ApiResponse<T = unknown> {
 export interface GetUsersParams {
   p?: number
   page_size?: number
+  include_deleted?: boolean
 }
 
 export interface GetUsersResponse {
@@ -94,6 +95,7 @@ export interface SearchUsersParams {
   group?: string
   p?: number
   page_size?: number
+  include_deleted?: boolean
 }
 
 export interface UserFormData {

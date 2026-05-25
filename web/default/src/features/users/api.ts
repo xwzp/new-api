@@ -38,8 +38,15 @@ import type {
 export async function getUsers(
   params: GetUsersParams = {}
 ): Promise<GetUsersResponse> {
-  const { p = 1, page_size = 10 } = params
-  const res = await api.get(`/api/user/?p=${p}&page_size=${page_size}`)
+  const { p = 1, page_size = 10, include_deleted = false } = params
+  const query = new URLSearchParams({
+    p: String(p),
+    page_size: String(page_size),
+  })
+  if (include_deleted) {
+    query.set('include_deleted', 'true')
+  }
+  const res = await api.get(`/api/user/?${query.toString()}`)
   return res.data
 }
 
@@ -49,10 +56,23 @@ export async function getUsers(
 export async function searchUsers(
   params: SearchUsersParams
 ): Promise<GetUsersResponse> {
-  const { keyword = '', group = '', p = 1, page_size = 10 } = params
-  const res = await api.get(
-    `/api/user/search?keyword=${keyword}&group=${group}&p=${p}&page_size=${page_size}`
-  )
+  const {
+    keyword = '',
+    group = '',
+    p = 1,
+    page_size = 10,
+    include_deleted = false,
+  } = params
+  const query = new URLSearchParams({
+    keyword,
+    group,
+    p: String(p),
+    page_size: String(page_size),
+  })
+  if (include_deleted) {
+    query.set('include_deleted', 'true')
+  }
+  const res = await api.get(`/api/user/search?${query.toString()}`)
   return res.data
 }
 

@@ -27,7 +27,7 @@ const usersSearchSchema = z.object({
   pageSize: z.number().optional().catch(10),
   filter: z.string().optional().catch(''),
   status: z
-    .array(z.enum(['1', '2']))
+    .array(z.enum(['1', '2', '-1']))
     .optional()
     .catch([]),
   role: z
@@ -35,6 +35,7 @@ const usersSearchSchema = z.object({
     .optional()
     .catch([]),
   group: z.string().optional().catch(''),
+  showDeleted: z.boolean().optional().catch(false),
 })
 
 export const Route = createFileRoute('/_authenticated/users/')({

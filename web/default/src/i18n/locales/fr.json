@@ -1150,6 +1150,7 @@
     "Delete selected channels": "Supprimer les canaux sélectionnés",
     "Delete selected models": "Supprimer les modèles sélectionnés",
     "Deleted": "Supprimé",
+    "Hide deleted users": "Masquer les utilisateurs supprimés",
     "Deleted successfully": "Supprimé avec succès",
     "Deleting will permanently remove this subscription record (including benefit details). Continue?": "La suppression supprimera définitivement cet enregistrement d'abonnement (y compris les détails des avantages). Continuer ?",
     "Deleting...": "Suppression...",

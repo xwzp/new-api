@@ -60,6 +60,7 @@ export const USER_STATUSES = {
 export const getUserStatusOptions = (t: (key: string) => string) => [
   { label: t('Enabled'), value: String(USER_STATUS.ENABLED) },
   { label: t('Disabled'), value: String(USER_STATUS.DISABLED) },
+  { label: t('Deleted'), value: String(USER_STATUSES.DELETED.value) },
 ]
 
 // ============================================================================

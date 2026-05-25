@@ -34,6 +34,7 @@ import { useMediaQuery } from '@/hooks'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
@@ -62,6 +63,10 @@ export function UsersTable() {
   const columns = useUsersColumns()
   const { refreshTrigger } = useUsers()
   const isMobile = useMediaQuery('(max-width: 640px)')
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
+  const showDeleted = search.showDeleted === true
+  const hideDeleted = !showDeleted
   const [rowSelection, setRowSelection] = useState({})
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
@@ -75,8 +80,8 @@ export function UsersTable() {
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: { defaultPage: 1, defaultPageSize: isMobile ? 10 : 20 },
     globalFilter: { enabled: true, key: 'filter' },
     columnFilters: [
@@ -93,6 +98,7 @@ export function UsersTable() {
       pagination.pageIndex + 1,
       pagination.pageSize,
       globalFilter,
+      showDeleted,
       refreshTrigger,
     ],
     queryFn: async () => {
@@ -103,8 +109,12 @@ export function UsersTable() {
       }
 
       const result = hasFilter
-        ? await searchUsers({ ...params, keyword: globalFilter })
-        : await getUsers(params)
+        ? await searchUsers({
+            ...params,
+            keyword: globalFilter,
+            include_deleted: showDeleted,
+          })
+        : await getUsers({ ...params, include_deleted: showDeleted })
 
       if (!result.success) {
         toast.error(
@@ -169,6 +179,25 @@ export function UsersTable() {
     ensurePageInRange(pageCount)
   }, [pageCount, ensurePageInRange])
 
+  const hideDeletedToggle = (
+    <label className='border-input bg-background hover:bg-accent hover:text-accent-foreground flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm transition-colors'>
+      <Checkbox
+        checked={hideDeleted}
+        onCheckedChange={(value) => {
+          navigate({
+            search: (prev) => ({
+              ...prev,
+              page: undefined,
+              showDeleted: value ? undefined : true,
+            }),
+          })
+        }}
+        aria-label={t('Hide deleted users')}
+      />
+      <span>{t('Hide deleted users')}</span>
+    </label>
+  )
+
   return (
     <DataTablePage
       table={table}
@@ -182,6 +211,7 @@ export function UsersTable() {
       skeletonKeyPrefix='users-skeleton'
       toolbarProps={{
         searchPlaceholder: t('Filter by username, name or email...'),
+        additionalSearch: hideDeletedToggle,
         filters: [
           {
             columnId: 'status',

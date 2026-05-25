@@ -1150,6 +1150,7 @@
     "Delete selected channels": "Xóa các kênh đã chọn",
     "Delete selected models": "Xóa các mô hình đã chọn",
     "Deleted": "Đã xóa",
+    "Hide deleted users": "Ẩn người dùng đã xóa",
     "Deleted successfully": "Xóa thành công",
     "Deleting will permanently remove this subscription record (including benefit details). Continue?": "Xóa sẽ xóa vĩnh viễn bản ghi đăng ký này (bao gồm chi tiết quyền lợi). Tiếp tục?",
     "Deleting...": "Đang xóa...",
