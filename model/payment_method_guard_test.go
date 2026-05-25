@@ -23,13 +23,14 @@ func insertUserForPaymentGuardTest(t *testing.T, id int, quota int) {
 func insertSubscriptionPlanForPaymentGuardTest(t *testing.T, id int) *SubscriptionPlan {
 	t.Helper()
 	plan := &SubscriptionPlan{
-		Id:             id,
-		Title:          "Guard Plan",
-		PriceMonthly:   9.99,
-		Currency:       "USD",
-		MonthlyEnabled: true,
-		Enabled:        true,
-		TotalAmount:    1000,
+		Id:            id,
+		Title:         "Guard Plan",
+		PriceAmount:   9.99,
+		Currency:      "USD",
+		DurationUnit:  SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		TotalAmount:   1000,
 	}
 	require.NoError(t, DB.Create(plan).Error)
 	return plan
@@ -40,7 +41,6 @@ func insertSubscriptionOrderForPaymentGuardTest(t *testing.T, tradeNo string, us
 	order := &SubscriptionOrder{
 		UserId:          userID,
 		PlanId:          planID,
-		PeriodType:      PeriodMonthly,
 		Money:           9.99,
 		TradeNo:         tradeNo,
 		PaymentMethod:   paymentMethod,

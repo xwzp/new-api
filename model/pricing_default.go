@@ -73,7 +73,6 @@ var defaultVendorIcons = map[string]string{
 // channelTypeVendorMap 渠道类型到供应商名称的映射（仅供应商专属渠道，不含聚合器/代理类型）
 var channelTypeVendorMap = map[int]string{
 	constant.ChannelTypeAnthropic:   "Anthropic",
-	constant.ChannelTypeClaudeOAuth: "Anthropic",
 	constant.ChannelTypeBaidu:       "百度",
 	constant.ChannelTypeBaiduV2:     "百度",
 	constant.ChannelTypeZhipu:       "智谱",

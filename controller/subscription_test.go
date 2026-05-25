@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -30,6 +31,9 @@ func setupSubscriptionTestDB(t *testing.T) *gorm.DB {
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
+	paymentSetting := operation_setting.GetPaymentSetting()
+	paymentSetting.ComplianceConfirmed = true
+	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -61,19 +65,14 @@ func setupSubscriptionTestDB(t *testing.T) *gorm.DB {
 func seedPlan(t *testing.T, db *gorm.DB, title string, priceMonthly float64) *model.SubscriptionPlan {
 	t.Helper()
 	plan := &model.SubscriptionPlan{
-		Title:            title,
-		Subtitle:         title + " subtitle",
-		Tag:              "popular",
-		Features:         `[{"text":"Feature 1","icon":"check","style":"default"}]`,
-		PriceMonthly:     priceMonthly,
-		Currency:         "USD",
-		MonthlyEnabled:   true,
-		QuarterlyEnabled: true,
-		QuarterlyDiscount: 10,
-		YearlyEnabled:    true,
-		YearlyDiscount:   20,
-		TotalAmount:      500000,
-		Enabled:          true,
+		Title:         title,
+		Subtitle:      title + " subtitle",
+		PriceAmount:   priceMonthly,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		TotalAmount:   500000,
+		Enabled:       true,
 	}
 	if err := db.Create(plan).Error; err != nil {
 		t.Fatalf("failed to create plan: %v", err)
@@ -135,17 +134,17 @@ func TestAdminCreateSubscriptionPlan(t *testing.T) {
 	setupSubscriptionTestDB(t)
 
 	body := map[string]interface{}{
-		"title":            "Pro Plan",
-		"subtitle":         "Best value",
-		"tag":              "推荐",
-		"price_monthly":    9.99,
-		"monthly_enabled":  true,
-		"quarterly_enabled": true,
-		"quarterly_discount": 15,
-		"yearly_enabled":   true,
-		"yearly_discount":  25,
-		"total_amount":     500000,
-		"features":         `[{"text":"Unlimited access","icon":"check","style":"highlight"}]`,
+		"plan": map[string]interface{}{
+			"title":          "Pro Plan",
+			"subtitle":       "Best value",
+			"price_amount":   9.99,
+			"currency":       "USD",
+			"duration_unit":  model.SubscriptionDurationMonth,
+			"duration_value": 1,
+			"total_amount":   500000,
+			"features":       `[{"text":"Unlimited access","icon":"check","style":"highlight"}]`,
+			"enabled":        true,
+		},
 	}
 	ctx, recorder := newCtx(t, http.MethodPost, "/api/subscription/admin/plans", body)
 	AdminCreateSubscriptionPlan(ctx)
@@ -171,8 +170,10 @@ func TestAdminCreatePlanEmptyTitleFails(t *testing.T) {
 	setupSubscriptionTestDB(t)
 
 	body := map[string]interface{}{
-		"title":         "  ",
-		"price_monthly": 9.99,
+		"plan": map[string]interface{}{
+			"title":        "  ",
+			"price_amount": 9.99,
+		},
 	}
 	ctx, recorder := newCtx(t, http.MethodPost, "/api/subscription/admin/plans", body)
 	AdminCreateSubscriptionPlan(ctx)
@@ -205,20 +206,6 @@ func TestAdminListPlans(t *testing.T) {
 	}
 }
 
-func TestAdminDeletePlanSucceeds(t *testing.T) {
-	db := setupSubscriptionTestDB(t)
-	plan := seedPlan(t, db, "Delete Me", 9.99)
-
-	ctx, recorder := newCtx(t, http.MethodDelete, "/api/subscription/admin/plans/"+strconv.Itoa(plan.Id), nil)
-	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(plan.Id)}}
-	AdminDeleteSubscriptionPlan(ctx)
-
-	resp := decodeResp(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success: %s", resp.Message)
-	}
-}
-
 func TestAdminPlanStatusToggle(t *testing.T) {
 	db := setupSubscriptionTestDB(t)
 	plan := seedPlan(t, db, "Toggle Me", 9.99)
@@ -235,39 +222,6 @@ func TestAdminPlanStatusToggle(t *testing.T) {
 	}
 }
 
-// ---- Public API Tests ----
-
-func TestGetPublicSubscriptionPlans(t *testing.T) {
-	db := setupSubscriptionTestDB(t)
-	seedPlan(t, db, "Starter", 5.99)
-
-	// Also create a disabled plan - should not appear
-	disabled := seedPlan(t, db, "Disabled Plan", 19.99)
-	db.Model(&model.SubscriptionPlan{}).Where("id = ?", disabled.Id).Update("enabled", false)
-
-	ctx, recorder := newCtx(t, http.MethodGet, "/api/subscription/public-plans", nil)
-	GetPublicSubscriptionPlans(ctx)
-
-	resp := decodeResp(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success: %s", resp.Message)
-	}
-
-	var plans []PublicSubscriptionPlanDTO
-	if err := common.Unmarshal(resp.Data, &plans); err != nil {
-		t.Fatalf("failed to decode public plans: %v", err)
-	}
-	if len(plans) != 1 {
-		t.Fatalf("expected 1 enabled plan, got %d", len(plans))
-	}
-	if plans[0].Title != "Starter" {
-		t.Errorf("expected title 'Starter', got %q", plans[0].Title)
-	}
-	if plans[0].Periods["monthly"].Price != 5.99 {
-		t.Errorf("expected monthly price 5.99, got %f", plans[0].Periods["monthly"].Price)
-	}
-}
-
 func TestGetSubscriptionPlansReturnsEnabled(t *testing.T) {
 	db := setupSubscriptionTestDB(t)
 	seedPlan(t, db, "Premium", 29.99)
@@ -280,15 +234,15 @@ func TestGetSubscriptionPlansReturnsEnabled(t *testing.T) {
 		t.Fatalf("expected success: %s", resp.Message)
 	}
 
-	var plans []model.SubscriptionPlan
+	var plans []SubscriptionPlanDTO
 	if err := common.Unmarshal(resp.Data, &plans); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
 	if len(plans) != 1 {
 		t.Fatalf("expected 1 plan, got %d", len(plans))
 	}
-	if plans[0].Title != "Premium" {
-		t.Errorf("expected title 'Premium', got %q", plans[0].Title)
+	if plans[0].Plan.Title != "Premium" {
+		t.Errorf("expected title 'Premium', got %q", plans[0].Plan.Title)
 	}
 }
 

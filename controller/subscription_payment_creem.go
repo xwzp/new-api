@@ -17,13 +17,17 @@ import (
 )
 
 type SubscriptionCreemPayRequest struct {
-	PlanId     int    `json:"plan_id"`
-	PeriodType string `json:"period_type"`
+	PlanId int `json:"plan_id"`
 }
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
 	var req SubscriptionCreemPayRequest
 
+	// Keep body for debugging consistency (like RequestCreemPay)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付请求读取失败 error=%q", err.Error()))
@@ -36,10 +40,6 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if !model.ValidatePeriodType(req.PeriodType) {
-		c.JSON(200, gin.H{"message": "error", "data": "无效的付款周期"})
-		return
-	}
 
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
@@ -50,12 +50,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if !plan.IsPeriodEnabled(req.PeriodType) {
-		common.ApiErrorMsg(c, "该付款周期未启用")
-		return
-	}
-	creemProductId := plan.GetCreemProductId(req.PeriodType)
-	if creemProductId == "" {
+	if plan.CreemProductId == "" {
 		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
 	}
@@ -87,15 +82,14 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		}
 	}
 
-	price := plan.CalcPeriodPrice(req.PeriodType)
 	reference := "sub-creem-ref-" + randstr.String(6)
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
 
+	// create pending order first
 	order := &model.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
-		PeriodType:      req.PeriodType,
-		Money:           price,
+		Money:           plan.PriceAmount,
 		TradeNo:         referenceId,
 		PaymentMethod:   model.PaymentMethodCreem,
 		PaymentProvider: model.PaymentProviderCreem,
@@ -107,6 +101,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
+	// Reuse Creem checkout generator by building a lightweight product reference.
 	currency := "USD"
 	switch operation_setting.GetGeneralSetting().QuotaDisplayType {
 	case operation_setting.QuotaDisplayTypeCNY:
@@ -117,9 +112,9 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		currency = "USD"
 	}
 	product := &CreemProduct{
-		ProductId: creemProductId,
+		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
-		Price:     price,
+		Price:     plan.PriceAmount,
 		Currency:  currency,
 		Quota:     0,
 	}

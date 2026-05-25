@@ -11,7 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/channel/claude_oauth"
+	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -170,25 +170,6 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 
-		// sanitize client fingerprints for Anthropic Claude channels
-		if info.ChannelType == constant.ChannelTypeClaudeOAuth || info.ChannelType == constant.ChannelTypeAnthropic {
-			jsonData, err = claude_oauth.SanitizeClientFingerprints(jsonData, info.ChannelOtherSettings.EnableOpenClawObfuscation, info.ChannelOtherSettings.EnableHermesObfuscation)
-			if err != nil {
-				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
-			}
-			var reverseMap map[string]string
-			jsonData, reverseMap, err = claude_oauth.ExtractAndCleanReverseMap(jsonData)
-			if err != nil {
-				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
-			}
-			if reverseMap != nil {
-				c.Set(claude_oauth.ContextKeyToolReverseMap, reverseMap)
-			}
-			if len(claude_oauth.ParamNameReverseMap) > 0 {
-				c.Set(claude_oauth.ContextKeyParamReverseMap, claude_oauth.ParamNameReverseMap)
-			}
-		}
-
 		// apply param override
 		if len(info.ParamOverride) > 0 {
 			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
@@ -197,9 +178,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
-		if common.DebugEnabled {
-			println("requestBody: ", string(jsonData))
-		}
+		logger.LogDebug(c, "requestBody: %s", jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 
@@ -222,7 +201,6 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
-	//log.Printf("usage: %v", usage)
 	if newAPIError != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)

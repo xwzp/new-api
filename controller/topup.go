@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/gin-gonic/gin"
@@ -23,16 +22,16 @@ import (
 )
 
 func GetTopUpInfo(c *gin.Context) {
-	// 只有 Epay 启用时才包含 Epay 支付方式（支付宝/微信/自定义等）
+	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+
+	// 只有 Epay 启用时才包含 Epay 支付方式（支付宝/微信/自定义等）。
 	enableOnlineTopUp := operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != ""
 	var payMethods []map[string]string
 	if enableOnlineTopUp {
 		payMethods = operation_setting.PayMethods
 	}
 
-	// 如果启用了 Stripe 支付，添加到支付方法列表
 	if isStripeTopUpEnabled() {
-		// 检查是否已经包含 Stripe
 		hasStripe := false
 		for _, method := range payMethods {
 			if method["type"] == "stripe" {
@@ -42,35 +41,12 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 
 		if !hasStripe {
-			stripeMethod := map[string]string{
+			payMethods = append(payMethods, map[string]string{
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "rgba(var(--semi-purple-5), 1)",
 				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
-			}
-			payMethods = append(payMethods, stripeMethod)
-		}
-	}
-
-	// 如果启用了 Waffo 支付，添加到支付方法列表
-	enableWaffo := isWaffoTopUpEnabled()
-	if enableWaffo {
-		hasWaffo := false
-		for _, method := range payMethods {
-			if method["type"] == model.PaymentMethodWaffo {
-				hasWaffo = true
-				break
-			}
-		}
-
-		if !hasWaffo {
-			waffoMethod := map[string]string{
-				"name":      "Waffo (Global Payment)",
-				"type":      model.PaymentMethodWaffo,
-				"color":     "rgba(var(--semi-blue-5), 1)",
-				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
-			}
-			payMethods = append(payMethods, waffoMethod)
+			})
 		}
 	}
 
@@ -94,19 +70,36 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
-	// 微信支付 Native
+	enableWaffo := isWaffoTopUpEnabled()
+	if enableWaffo {
+		hasWaffo := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodWaffo {
+				hasWaffo = true
+				break
+			}
+		}
+
+		if !hasWaffo {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "Waffo (Global Payment)",
+				"type":      model.PaymentMethodWaffo,
+				"color":     "rgba(var(--semi-blue-5), 1)",
+				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
+			})
+		}
+	}
+
 	enableWechatPay := setting.WechatPayEnabled &&
 		setting.WechatPayMchId != "" &&
 		setting.WechatPayMchApiV3Key != "" &&
 		setting.WechatPayMchSerialNo != "" &&
 		setting.WechatPayMchPrivateKey != "" &&
 		setting.WechatPayAppId != ""
-	// 微信支付有效最低充值：取 per-gateway 和全局的较大值
 	effectiveWechatMinTopUp := setting.WechatPayMinTopUp
 	if operation_setting.MinTopUp > effectiveWechatMinTopUp {
 		effectiveWechatMinTopUp = operation_setting.MinTopUp
 	}
-
 	if enableWechatPay {
 		hasWechat := false
 		for _, method := range payMethods {
@@ -116,23 +109,20 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		if !hasWechat {
-			wechatMethod := map[string]string{
+			payMethods = append(payMethods, map[string]string{
 				"name":      "微信支付（直连）",
 				"type":      "wechat",
 				"color":     "rgba(var(--semi-green-5), 1)",
 				"min_topup": strconv.Itoa(effectiveWechatMinTopUp),
-			}
-			payMethods = append(payMethods, wechatMethod)
+			})
 		}
 	}
 
-	// 支付宝当面付
 	enableAlipay := setting.AlipayEnabled && setting.IsAlipayConfigured()
 	effectiveAlipayMinTopUp := setting.AlipayMinTopUp
 	if operation_setting.MinTopUp > effectiveAlipayMinTopUp {
 		effectiveAlipayMinTopUp = operation_setting.MinTopUp
 	}
-
 	if enableAlipay {
 		hasAlipay := false
 		for _, method := range payMethods {
@@ -142,17 +132,15 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		if !hasAlipay {
-			alipayMethod := map[string]string{
+			payMethods = append(payMethods, map[string]string{
 				"name":      "支付宝（直连）",
 				"type":      "alipay",
 				"color":     "rgba(var(--semi-blue-5), 1)",
 				"min_topup": strconv.Itoa(effectiveAlipayMinTopUp),
-			}
-			payMethods = append(payMethods, alipayMethod)
+			})
 		}
 	}
 
-	// 获取当前用户的充值分组倍率
 	topupGroupRatio := 1.0
 	if userId := c.GetInt("id"); userId > 0 {
 		if group, err := model.GetUserGroup(userId, true); err == nil {
@@ -175,17 +163,20 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":        isEpayTopUpEnabled(),
-		"enable_stripe_topup":        isStripeTopUpEnabled(),
-		"enable_creem_topup":         isCreemTopUpEnabled(),
-		"enable_waffo_topup":         enableWaffo,
-		"enable_waffo_pancake_topup": enableWaffoPancake,
-		"enable_wechat_topup":        enableWechatPay,
-		"wechat_min_topup":           effectiveWechatMinTopUp,
-		"wechat_unit_price":          setting.WechatPayUnitPrice,
-		"enable_alipay_topup":        enableAlipay,
-		"alipay_min_topup":           effectiveAlipayMinTopUp,
-		"alipay_unit_price":          setting.AlipayUnitPrice,
+		"enable_online_topup":              isEpayTopUpEnabled(),
+		"enable_stripe_topup":              isStripeTopUpEnabled(),
+		"enable_creem_topup":               isCreemTopUpEnabled(),
+		"enable_waffo_topup":               enableWaffo,
+		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_wechat_topup":              enableWechatPay,
+		"wechat_min_topup":                 effectiveWechatMinTopUp,
+		"wechat_unit_price":                setting.WechatPayUnitPrice,
+		"enable_alipay_topup":              enableAlipay,
+		"alipay_min_topup":                 effectiveAlipayMinTopUp,
+		"alipay_unit_price":                setting.AlipayUnitPrice,
+		"enable_redemption":                complianceConfirmed,
+		"payment_compliance_confirmed":     complianceConfirmed,
+		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -201,6 +192,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          amountOptions,
 		"discount":                amountDiscount,
 		"topup_group_ratio":       topupGroupRatio,
+		"topup_link":              common.TopUpLink,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -307,7 +299,7 @@ func RequestEpay(c *gin.Context) {
 	}
 
 	callBackAddress := service.GetCallbackAddress()
-	returnUrl, _ := url.Parse(system_setting.ServerAddress + "/console/log")
+	returnUrl, _ := url.Parse(paymentReturnPath("/console/log"))
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)

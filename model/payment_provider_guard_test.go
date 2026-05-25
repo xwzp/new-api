@@ -50,7 +50,6 @@ func TestCompleteSubscriptionOrderRejectsCrossGatewayCallback(t *testing.T) {
 		UserId:          2,
 		PlanId:          1,
 		Money:           10,
-		PeriodType:      PeriodMonthly,
 		TradeNo:         "sub_ref_guard",
 		PaymentMethod:   "stripe",
 		PaymentProvider: PaymentProviderStripe,
@@ -60,21 +59,4 @@ func TestCompleteSubscriptionOrderRejectsCrossGatewayCallback(t *testing.T) {
 
 	err := CompleteSubscriptionOrder(order.TradeNo, `{"provider":"epay"}`, PaymentProviderEpay, "alipay")
 	require.True(t, errors.Is(err, ErrPaymentProviderMismatch))
-}
-
-func TestSubscriptionProviderGuardAllowsOnlyMatchingLegacyOrders(t *testing.T) {
-	require.True(t, subscriptionPaymentProviderMatches(&SubscriptionOrder{
-		TradeNo:       "SUBWX-1-1000-abcd",
-		PaymentMethod: "wechat",
-	}, PaymentProviderWechat))
-
-	require.False(t, subscriptionPaymentProviderMatches(&SubscriptionOrder{
-		TradeNo:       "SUBWX-1-1000-abcd",
-		PaymentMethod: "wechat",
-	}, PaymentProviderStripe))
-
-	require.True(t, subscriptionPaymentProviderMatches(&SubscriptionOrder{
-		TradeNo:       "SUBUSR1NOabcdef1000",
-		PaymentMethod: "alipay",
-	}, PaymentProviderEpay))
 }

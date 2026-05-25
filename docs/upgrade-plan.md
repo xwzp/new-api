@@ -96,6 +96,36 @@ user deploys:
   the old version, but do not manually drop production columns during incident
   recovery.
 
+### Stage 6 Production Notes
+
+For the `v0.13.2 -> v1.0.0-rc.8` deployment handoff, check these items before
+the user deploys:
+
+- The build now embeds two frontends: `web/default` and `web/classic`. The
+  production default remains `classic`, so the existing production UI should not
+  switch to the new upstream UI unless the operator explicitly changes the
+  frontend setting.
+- The Docker image still builds and starts `/nebula-api`. Do not rename the
+  production container/service/image during this upgrade.
+- The Nebula favicon, title, and generator metadata are preserved in both
+  frontend builds.
+- Production database compatibility is expected to be additive. This stage adds
+  new tables such as subscription orders, user subscriptions, subscription
+  pre-consume records, topup tiers, and perf metrics if missing. For existing
+  `subscription_plans`, rc.8 may adjust `price_amount` to `decimal(10,6)`.
+  Production currently has no subscription business, so this should not affect
+  live topup usage, but take a PostgreSQL dump before deployment.
+- Topup tiers remain database-backed in `main-plus`; `payment_setting` only
+  stores compliance metadata. Existing direct WeChat/Alipay topup routes are
+  preserved.
+- Old Claude OAuth refresh/import/sanitize/fingerprint paths were removed, while
+  normal Claude relay behavior and the empty-text tool-call guard are preserved.
+- Upstream request ID, perf metrics, rankings, I/O.net, and Waffo Pancake
+  `:env` webhook support are included.
+- Before deployment, run the production preflight gate in this document and
+  confirm `docker-compose.prod.yml` has not reintroduced the old passwordless
+  Redis override.
+
 ## Plan
 
 | Done | Step | From | To | Status | Notes |
@@ -106,7 +136,7 @@ user deploys:
 | [x] | 3 | `v0.12.5` | `v0.12.10` | Completed | Merged `v0.12.10`; conflicts handled per `C3-01` through `C3-05`; kept payment-provider isolation while adding Stripe async webhook handling; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 4 | `v0.12.10` | `v0.12.15` | Completed | Merged `v0.12.15`; conflicts handled per `C4-01` through `C4-08`; kept payment-provider isolation, direct WeChat/Alipay, and Claude empty-text handling while adding Waffo Pancake/payment log/Codex/Gemini/passkey updates; `go test ./...` and `mise run fe-build` passed. |
 | [x] | 5 | `v0.12.15` | `v0.13.2` | Completed | Merged `v0.13.2`; conflicts handled per `C5-01` through `C5-07`; kept payment-provider isolation and direct WeChat/Alipay compatibility, removed Brave Search routes/channel, added tiered billing/model sync updates; `go test ./...` and `mise run fe-build` passed. |
-| [ ] | 6 | `v0.13.2` | `v1.0.0-rc.8` | Pending conflict review | Explain conflicts first, then wait for confirmation before upgrading. |
+| [x] | 6 | `v0.13.2` | `v1.0.0-rc.8` | Completed | Merged `v1.0.0-rc.8`; conflicts handled per `C6-01` through `C6-10`; embedded both `web/default` and `web/classic` while keeping production default `classic`, preserved direct WeChat/Alipay topup compatibility, removed obsolete Claude OAuth paths, and added request ID/perf metrics/rankings/Waffo Pancake rc.8 updates; `go test ./...`, backend build, and both frontend builds passed. |
 
 ## Verification Checklist
 
