@@ -41,6 +41,13 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 
+	richModelsRouter := router.Group("/v1/rich-models")
+	richModelsRouter.Use(middleware.RouteTag("relay"))
+	richModelsRouter.Use(middleware.TokenAuth())
+	{
+		richModelsRouter.GET("", controller.ListRichModels)
+	}
+
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))
 	geminiRouter.Use(middleware.TokenAuth())

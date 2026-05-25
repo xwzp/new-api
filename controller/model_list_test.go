@@ -26,6 +26,12 @@ type listModelsResponse struct {
 	Object  string             `json:"object"`
 }
 
+type richModelsResponse struct {
+	Success bool                  `json:"success"`
+	Data    []dto.RichOpenAIModel `json:"data"`
+	Object  string                `json:"object"`
+}
+
 func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -130,6 +136,16 @@ func withSelfUseModeDisabled(t *testing.T) {
 	})
 }
 
+func withSelfUseModeEnabled(t *testing.T) {
+	t.Helper()
+
+	original := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = true
+	t.Cleanup(func() {
+		operation_setting.SelfUseModeEnabled = original
+	})
+}
+
 func decodeListModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]struct{} {
 	t.Helper()
 
@@ -144,6 +160,17 @@ func decodeListModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder)
 		ids[item.Id] = struct{}{}
 	}
 	return ids
+}
+
+func decodeRichModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder) richModelsResponse {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload richModelsResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	require.Equal(t, "list", payload.Object)
+	return payload
 }
 
 func pricingByModelName(pricings []model.Pricing) map[string]model.Pricing {
@@ -240,4 +267,128 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
 	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
 	require.NotContains(t, ids, "zz-token-unpriced-model")
+}
+
+func TestListRichModelsUsesVisibleModelsAndModelCapabilities(t *testing.T) {
+	withSelfUseModeEnabled(t)
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1002,
+		Username: "rich-model-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     1,
+		Type:   constant.ChannelTypeDeepSeek,
+		Key:    "test-key",
+		Status: common.ChannelStatusEnabled,
+		Name:   "DeepSeek Channel",
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "deepseek-v4-pro",
+		ChannelId: 1,
+		Enabled:   true,
+	}).Error)
+	require.NoError(t, db.Create(&model.Model{
+		ModelName:       "deepseek-v4-pro",
+		Status:          1,
+		ContextWindow:   1000000,
+		MaxOutputTokens: 128000,
+		Reasoning:       model.ReasoningSupported,
+		InputModalities: `["text","image","custom"]`,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/rich-models", nil)
+	ctx.Set("id", 1002)
+
+	ListRichModels(ctx)
+
+	payload := decodeRichModelsResponse(t, recorder)
+	require.Len(t, payload.Data, 1)
+	richModel := payload.Data[0]
+	require.Equal(t, "deepseek-v4-pro", richModel.Id)
+	require.Equal(t, "model", richModel.Object)
+	require.Equal(t, "deepseek", richModel.OwnedBy)
+	require.Equal(t, 1000000, richModel.ContextWindow)
+	require.Equal(t, 128000, richModel.MaxOutputTokens)
+	require.True(t, richModel.Reasoning)
+	require.Equal(t, []string{"text", "image"}, richModel.InputModalities)
+	require.Equal(t, model.SourceOverride, richModel.CapabilitySource.ContextWindow)
+	require.Equal(t, model.SourceOverride, richModel.CapabilitySource.MaxOutputTokens)
+	require.Equal(t, model.SourceOverride, richModel.CapabilitySource.Reasoning)
+	require.Equal(t, model.SourceOverride, richModel.CapabilitySource.InputModalities)
+	require.Equal(t, dto.OpenClawRichModel{
+		Id:            "deepseek-v4-pro",
+		Name:          "deepseek-v4-pro",
+		Reasoning:     true,
+		Input:         []string{"text", "image"},
+		ContextWindow: 1000000,
+		MaxTokens:     128000,
+		Api:           "openai-completions",
+	}, richModel.OpenClaw)
+}
+
+func TestListRichModelsHonorsTokenModelLimit(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	setupModelListControllerTestDB(t)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/rich-models", nil)
+	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+		"deepseek-v4-pro": true,
+	})
+
+	ListRichModels(ctx)
+
+	payload := decodeRichModelsResponse(t, recorder)
+	require.Len(t, payload.Data, 1)
+	require.Equal(t, "deepseek-v4-pro", payload.Data[0].Id)
+}
+
+func TestListRichModelsFallsBackToDefaultCapabilities(t *testing.T) {
+	withSelfUseModeEnabled(t)
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1003,
+		Username: "rich-model-default-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "zz-custom-rich-model",
+		ChannelId: 1,
+		Enabled:   true,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/rich-models", nil)
+	ctx.Set("id", 1003)
+
+	ListRichModels(ctx)
+
+	payload := decodeRichModelsResponse(t, recorder)
+	require.Len(t, payload.Data, 1)
+	richModel := payload.Data[0]
+	require.Equal(t, "zz-custom-rich-model", richModel.Id)
+	require.Equal(t, 128000, richModel.ContextWindow)
+	require.Equal(t, 4096, richModel.MaxOutputTokens)
+	require.False(t, richModel.Reasoning)
+	require.Equal(t, []string{"text"}, richModel.InputModalities)
+	require.Equal(t, model.SourceDefault, richModel.CapabilitySource.ContextWindow)
+	require.Equal(t, model.SourceDefault, richModel.CapabilitySource.MaxOutputTokens)
+	require.Equal(t, model.SourceDefault, richModel.CapabilitySource.Reasoning)
+	require.Equal(t, model.SourceDefault, richModel.CapabilitySource.InputModalities)
 }

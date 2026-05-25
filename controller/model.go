@@ -175,6 +175,11 @@ type modelListGroups struct {
 	ownerGroups []string
 }
 
+type visibleModelList struct {
+	modelNames   []string
+	ownerByModel map[string]string
+}
+
 func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
@@ -205,7 +210,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	}, nil
 }
 
-func ListModels(c *gin.Context, modelType int) {
+func resolveVisibleModelList(c *gin.Context) (visibleModelList, error) {
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
 		userId := c.GetInt("id")
@@ -220,11 +225,7 @@ func ListModels(c *gin.Context, modelType int) {
 	userModelNames := make([]string, 0)
 	groups, err := getModelListGroups(c)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "get user group failed",
-		})
-		return
+		return visibleModelList{}, err
 	}
 	ownerGroups := groups.ownerGroups
 	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
@@ -236,7 +237,7 @@ func ListModels(c *gin.Context, modelType int) {
 		} else {
 			tokenModelLimit = map[string]bool{}
 		}
-		for allowModel, _ := range tokenModelLimit {
+		for allowModel := range tokenModelLimit {
 			if !acceptUnsetRatioModel {
 				if !helper.HasModelBillingConfig(allowModel) {
 					continue
@@ -272,9 +273,26 @@ func ListModels(c *gin.Context, modelType int) {
 	if len(ownerGroups) > 0 {
 		ownerByModel = getPreferredModelOwners(userModelNames, ownerGroups)
 	}
-	userOpenAiModels := make([]dto.OpenAIModels, 0, len(userModelNames))
-	for _, modelName := range userModelNames {
-		userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(modelName, ownerByModel))
+
+	return visibleModelList{
+		modelNames:   userModelNames,
+		ownerByModel: ownerByModel,
+	}, nil
+}
+
+func ListModels(c *gin.Context, modelType int) {
+	visibleModels, err := resolveVisibleModelList(c)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "get user group failed",
+		})
+		return
+	}
+
+	userOpenAiModels := make([]dto.OpenAIModels, 0, len(visibleModels.modelNames))
+	for _, modelName := range visibleModels.modelNames {
+		userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(modelName, visibleModels.ownerByModel))
 	}
 
 	switch modelType {
@@ -313,6 +331,99 @@ func ListModels(c *gin.Context, modelType int) {
 			"object":  "list",
 		})
 	}
+}
+
+func normalizeRichModelInputModalities(values []string) []string {
+	allowed := map[string]struct{}{
+		"text":  {},
+		"image": {},
+		"audio": {},
+		"video": {},
+	}
+	seen := make(map[string]struct{}, len(values))
+	modalities := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if _, ok := allowed[value]; !ok {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		modalities = append(modalities, value)
+	}
+	if len(modalities) == 0 {
+		return []string{"text"}
+	}
+	return modalities
+}
+
+func buildRichModel(openAIModel dto.OpenAIModels, meta *model.Model) dto.RichOpenAIModel {
+	resolved := model.Model{ModelName: openAIModel.Id}
+	if meta != nil {
+		resolved = *meta
+		if strings.TrimSpace(resolved.ModelName) == "" {
+			resolved.ModelName = openAIModel.Id
+		}
+	}
+	model.ResolveCapabilities(&resolved)
+
+	reasoning := resolved.EffectiveReasoning == model.ReasoningSupported
+	inputModalities := normalizeRichModelInputModalities(resolved.EffectiveInputModalities)
+	return dto.RichOpenAIModel{
+		OpenAIModels:    openAIModel,
+		ContextWindow:   resolved.EffectiveContextWindow,
+		MaxOutputTokens: resolved.EffectiveMaxOutputTokens,
+		Reasoning:       reasoning,
+		InputModalities: inputModalities,
+		CapabilitySource: dto.RichModelCapabilitySources{
+			ContextWindow:   resolved.ContextWindowSource,
+			MaxOutputTokens: resolved.MaxOutputTokensSource,
+			Reasoning:       resolved.ReasoningSource,
+			InputModalities: resolved.InputModalitiesSource,
+		},
+		OpenClaw: dto.OpenClawRichModel{
+			Id:            openAIModel.Id,
+			Name:          openAIModel.Id,
+			Reasoning:     reasoning,
+			Input:         inputModalities,
+			ContextWindow: resolved.EffectiveContextWindow,
+			MaxTokens:     resolved.EffectiveMaxOutputTokens,
+			Api:           "openai-completions",
+		},
+	}
+}
+
+func ListRichModels(c *gin.Context) {
+	visibleModels, err := resolveVisibleModelList(c)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "get user group failed",
+		})
+		return
+	}
+
+	modelMetaByName, err := model.GetModelsByNames(visibleModels.modelNames)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "get model metadata failed",
+		})
+		return
+	}
+
+	richModels := make([]dto.RichOpenAIModel, 0, len(visibleModels.modelNames))
+	for _, modelName := range visibleModels.modelNames {
+		openAIModel := buildOpenAIModel(modelName, visibleModels.ownerByModel)
+		richModels = append(richModels, buildRichModel(openAIModel, modelMetaByName[modelName]))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    richModels,
+		"object":  "list",
+	})
 }
 
 func ChannelListModels(c *gin.Context) {

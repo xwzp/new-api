@@ -11,6 +11,33 @@ type OpenAIModels struct {
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
 }
 
+type RichModelCapabilitySources struct {
+	ContextWindow   string `json:"context_window"`
+	MaxOutputTokens string `json:"max_output_tokens"`
+	Reasoning       string `json:"reasoning"`
+	InputModalities string `json:"input_modalities"`
+}
+
+type OpenClawRichModel struct {
+	Id            string   `json:"id"`
+	Name          string   `json:"name"`
+	Reasoning     bool     `json:"reasoning"`
+	Input         []string `json:"input"`
+	ContextWindow int      `json:"contextWindow"`
+	MaxTokens     int      `json:"maxTokens"`
+	Api           string   `json:"api"`
+}
+
+type RichOpenAIModel struct {
+	OpenAIModels
+	ContextWindow    int                        `json:"context_window"`
+	MaxOutputTokens  int                        `json:"max_output_tokens"`
+	Reasoning        bool                       `json:"reasoning"`
+	InputModalities  []string                   `json:"input_modalities"`
+	CapabilitySource RichModelCapabilitySources `json:"capability_sources"`
+	OpenClaw         OpenClawRichModel          `json:"openclaw"`
+}
+
 type AnthropicModel struct {
 	ID          string `json:"id"`
 	CreatedAt   string `json:"created_at"`

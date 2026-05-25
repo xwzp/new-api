@@ -39,7 +39,7 @@ type Model struct {
 	// Model capability fields (0 / "" = not set, falls through to fallback/default)
 	ContextWindow   int    `json:"context_window" gorm:"default:0"`
 	MaxOutputTokens int    `json:"max_output_tokens" gorm:"default:0"`
-	Reasoning       int    `json:"reasoning" gorm:"default:0"`                        // 0=not set, 1=supported, 2=not supported
+	Reasoning       int    `json:"reasoning" gorm:"default:0"`                          // 0=not set, 1=supported, 2=not supported
 	InputModalities string `json:"input_modalities,omitempty" gorm:"type:varchar(255)"` // JSON array, e.g. ["text","image"]
 
 	// Runtime-only fields (populated by enrichModels / ResolveCapabilities)
@@ -85,12 +85,12 @@ func (mi *Model) Insert() error {
 
 	// 使用保存的原始值进行更新，确保零值能正确保存
 	return DB.Model(&Model{}).Where("id = ?", mi.Id).Updates(map[string]interface{}{
-		"status":           originalStatus,
-		"sync_official":    originalSyncOfficial,
-		"context_window":   mi.ContextWindow,
+		"status":            originalStatus,
+		"sync_official":     originalSyncOfficial,
+		"context_window":    mi.ContextWindow,
 		"max_output_tokens": mi.MaxOutputTokens,
-		"reasoning":        mi.Reasoning,
-		"input_modalities": mi.InputModalities,
+		"reasoning":         mi.Reasoning,
+		"input_modalities":  mi.InputModalities,
 	}).Error
 }
 
@@ -139,6 +139,26 @@ func GetAllModels(offset int, limit int) ([]*Model, error) {
 	var models []*Model
 	err := DB.Order("id DESC").Offset(offset).Limit(limit).Find(&models).Error
 	return models, err
+}
+
+func GetModelsByNames(modelNames []string) (map[string]*Model, error) {
+	result := make(map[string]*Model)
+	modelNames = normalizeLookupValues(modelNames)
+	if len(modelNames) == 0 {
+		return result, nil
+	}
+
+	var models []*Model
+	if err := DB.Where("model_name IN ?", modelNames).Find(&models).Error; err != nil {
+		return nil, err
+	}
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		result[model.ModelName] = model
+	}
+	return result, nil
 }
 
 func GetBoundChannelsByModelsMap(modelNames []string) (map[string][]BoundChannel, error) {
