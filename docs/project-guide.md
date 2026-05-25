@@ -12,16 +12,25 @@ mise run status          # Git branch, worktrees, recent commits
 
 | Command | Description |
 |---------|-------------|
-| `mise run dev-up` | Build and start all services (Docker) |
-| `mise run dev-rebuild` | Rebuild nebula-api only (keeps DB/Redis) |
+| `mise run dev` | Start backend + classic UI local test server |
+| `mise run dev-rebuild` | Rebuild backend + start classic UI local test server |
+| `mise run dev-classic` | Start backend + classic UI local test server |
+| `mise run dev-default` | Start backend + default UI local test server |
+| `mise run dev-classic-rebuild` | Rebuild backend + start classic UI local test server |
+| `mise run dev-default-rebuild` | Rebuild backend + start default UI local test server |
+| `mise run dev-backend` | Start backend stack only |
+| `mise run dev-backend-rebuild` | Rebuild backend stack only |
+| `mise run dev-up` | Alias for `mise run dev` |
 | `mise run dev-logs` | Follow nebula-api container logs |
 | `mise run dev-down` | Stop all services |
 | `mise run dev-reset` | Stop all + delete volumes (DB data lost) |
 | `mise run run` | Run Go backend locally (port 3000) |
 | `mise run build` | Build Go binary |
-| `mise run fe-dev` | Start frontend dev server (port 5173) |
-| `mise run fe-build` | Build frontend for production |
-| `mise run fe-lint` | Lint frontend code |
+| `mise run fe-dev` | Start classic frontend only (port 5173) |
+| `mise run fe-dev-classic` | Start classic frontend only (port 5173) |
+| `mise run fe-dev-default` | Start default frontend only (port 3001) |
+| `mise run fe-build` | Build default frontend for production |
+| `mise run fe-lint` | Lint default frontend code |
 
 ### Testing
 

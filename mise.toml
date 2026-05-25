@@ -1,10 +1,70 @@
-[tasks.dev-up]
-description = "Build and start all services (local image)"
-run = "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build"
+[tasks.dev]
+description = "Start local test server with classic UI (default)"
+run = "mise run dev-classic"
 
 [tasks.dev-rebuild]
-description = "Rebuild and restart only nebula-api (keeps DB/Redis)"
+description = "Rebuild backend and start local test server with classic UI"
+run = "mise run dev-classic-rebuild"
+
+[tasks.dev-classic]
+description = "Start local test server with classic UI"
+run = """
+set -e
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d nebula-api
+echo "Backend: http://localhost:3000"
+echo "Classic UI: http://localhost:5173"
+cd web/classic
+bun install
+bun run dev -- --host 0.0.0.0 --port 5173
+"""
+
+[tasks.dev-classic-rebuild]
+description = "Rebuild backend and start local test server with classic UI"
+run = """
+set -e
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build nebula-api
+echo "Backend: http://localhost:3000"
+echo "Classic UI: http://localhost:5173"
+cd web/classic
+bun install
+bun run dev -- --host 0.0.0.0 --port 5173
+"""
+
+[tasks.dev-default]
+description = "Start local test server with default UI"
+run = """
+set -e
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d nebula-api
+echo "Backend: http://localhost:3000"
+echo "Default UI: http://localhost:3001"
+cd web/default
+bun install
+bun run dev -- --host 0.0.0.0 --port 3001
+"""
+
+[tasks.dev-default-rebuild]
+description = "Rebuild backend and start local test server with default UI"
+run = """
+set -e
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build nebula-api
+echo "Backend: http://localhost:3000"
+echo "Default UI: http://localhost:3001"
+cd web/default
+bun install
+bun run dev -- --host 0.0.0.0 --port 3001
+"""
+
+[tasks.dev-backend]
+description = "Start local backend stack only"
+run = "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d nebula-api"
+
+[tasks.dev-backend-rebuild]
+description = "Rebuild and restart local backend stack only"
 run = "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build nebula-api"
+
+[tasks.dev-up]
+description = "Alias for dev (classic UI)"
+run = "mise run dev"
 
 [tasks.dev-logs]
 description = "Follow nebula-api container logs"
@@ -112,18 +172,28 @@ run = "npx playwright codegen http://localhost:3099 --locale zh-CN"
 # ── Frontend ───────────────────────────────────────────────
 
 [tasks.fe-dev]
-description = "Start frontend dev server"
-dir = "web"
-run = "bun run dev"
+description = "Start classic frontend dev server only"
+dir = "web/classic"
+run = "bun install && bun run dev -- --host 0.0.0.0 --port 5173"
+
+[tasks.fe-dev-classic]
+description = "Start classic frontend dev server only"
+dir = "web/classic"
+run = "bun install && bun run dev -- --host 0.0.0.0 --port 5173"
+
+[tasks.fe-dev-default]
+description = "Start default frontend dev server only"
+dir = "web/default"
+run = "bun install && bun run dev -- --host 0.0.0.0 --port 3001"
 
 [tasks.fe-build]
 description = "Build frontend for production"
-dir = "web"
+dir = "web/default"
 run = "bun install && bun run build"
 
 [tasks.fe-lint]
 description = "Lint frontend code"
-dir = "web"
+dir = "web/default"
 run = "bun run lint"
 
 [tasks.docs-dev]
